@@ -271,4 +271,5 @@ func _on_dash_timer_timeout() -> void:
 		velocity.x = clamp(velocity.x, -current_speed, current_speed)
 
 func _on_dash_cool_down_timer_timeout() -> void:
+	
 	can_dash = true
