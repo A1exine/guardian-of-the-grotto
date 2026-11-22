@@ -1,0 +1,43 @@
+[gd_scene format=3 uid="uid://brt2qqy8kc2pa"]
+
+[ext_resource type="PackedScene" uid="uid://dcwsuael6p5c1" path="res://Scenes/player.tscn" id="1_jjgbg"]
+[ext_resource type="Script" uid="uid://74uombinuvf0" path="res://Scenes/camera_2d.gd" id="2_8gbba"]
+[ext_resource type="PackedScene" uid="uid://ch3s100mqvek2" path="res://Scenes/testplatform.tscn" id="2_bo1nx"]
+
+[node name="Main" type="Node2D" unique_id=182666557]
+
+[node name="player" parent="." unique_id=1327922490 instance=ExtResource("1_jjgbg")]
+position = Vector2(96, 491)
+jump_height = -1000.0
+
+[node name="Camera2D" type="Camera2D" parent="." unique_id=439383242 node_paths=PackedStringArray("player")]
+position = Vector2(726, 218)
+zoom = Vector2(0.75, 0.75)
+position_smoothing_enabled = true
+script = ExtResource("2_8gbba")
+player = NodePath("../player")
+follow_strength = 0.05
+
+[node name="StaticBody2D" parent="." unique_id=290576700 instance=ExtResource("2_bo1nx")]
+position = Vector2(-10, 620)
+
+[node name="StaticBody2D2" parent="." unique_id=371011298 instance=ExtResource("2_bo1nx")]
+position = Vector2(478, 620)
+
+[node name="StaticBody2D3" parent="." unique_id=1548480964 instance=ExtResource("2_bo1nx")]
+position = Vector2(961, 620)
+
+[node name="StaticBody2D6" parent="." unique_id=306611284 instance=ExtResource("2_bo1nx")]
+position = Vector2(955, 470)
+
+[node name="StaticBody2D7" parent="." unique_id=270028176 instance=ExtResource("2_bo1nx")]
+position = Vector2(1453, 145)
+rotation = 1.5707964
+
+[node name="StaticBody2D5" parent="." unique_id=1781296982 instance=ExtResource("2_bo1nx")]
+position = Vector2(-10, -337)
+rotation = 1.5707964
+
+[node name="StaticBody2D4" parent="." unique_id=1083763558 instance=ExtResource("2_bo1nx")]
+position = Vector2(-10, 143)
+rotation = 1.5707964
