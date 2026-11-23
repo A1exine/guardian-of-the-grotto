@@ -6,11 +6,13 @@ extends CharacterBody2D
 @onready var CoyoteTimer: Timer = $CoyoteTimer
 @onready var JumpBufferTimer: Timer = $JumpBufferTimer
 @onready var PlungeLockTimer: Timer = $PlungeLockTimer
+@onready var DashCoolDownTimer: Timer = $DashCoolDownTimer
 
 @onready var visual: ColorRect = $ColorRect # Change to Sprite2D when assets come in!
+@onready var base_color: Color = visual.color
 
-const BASE_SPEED: float = 600.0
-const RUN_SPEED: float = 900.0
+const BASE_SPEED: float = 400.0
+const RUN_SPEED: float = 800.0
 
 const RUN_JUMP_HEIGHT: float = -950.0
 const BASE_JUMP: float = -850.0
@@ -76,6 +78,7 @@ var charge_amount: float = 0.0
 
 var is_dashing: bool = false
 var can_dash: bool = true
+var has_air_dashed: bool = false
 
 #endregion
 
@@ -98,9 +101,6 @@ func _physics_process(delta: float) -> void:
 	handle_landing_effects(was_on_floor, pre_land_vy, x_input)
 	update_squash_and_stretch(delta)
 	
-	
-	pass
-
 func get_x_input() -> float:
 	return Input.get_action_strength("move_right") - Input.get_action_strength("move_left")
 	
@@ -110,6 +110,7 @@ func update_timers(delta) -> void:
 	
 	#Floor vs. Air Coyote State
 	if is_on_floor():
+		has_air_dashed = false
 		coyote_time_activated = false
 		wall_contact_coyote = 0.0
 	else:
@@ -117,6 +118,7 @@ func update_timers(delta) -> void:
 			CoyoteTimer.start()
 			coyote_time_activated = true
 		if is_on_wall():
+			has_air_dashed = false
 			wall_normal_x = get_wall_normal().x
 			wall_contact_coyote = WALL_CONTACT_COYOTE_TIME
 		elif wall_contact_coyote > 0.0:
@@ -127,7 +129,9 @@ func update_facing_direction(x_input: float) -> void:
 		look_dir_x = sign(x_input)
 
 func handle_dash() -> void:
-	if Input.is_action_just_pressed("dash") and can_dash:
+	if Input.is_action_just_pressed("dash") and can_dash and (is_on_floor() or not has_air_dashed):
+		if not is_on_floor():
+			has_air_dashed = true
 		is_dashing = true
 		can_dash = false
 		velocity.y = DASH_ARC_VELOCITY
@@ -183,7 +187,6 @@ func handle_horizontal_movement(delta: float, x_input: float) -> void:
 	else:
 		velocity.x = move_toward(velocity.x, 0.0, decel * delta)	
 		velocity.x = clamp(velocity.x, -max_speed, max_speed)
-
 	
 func handle_verticle_movement(delta: float, x_input: float) -> void:
 	if is_on_floor():
@@ -262,7 +265,6 @@ func handle_corner_correction() -> void:
 		if $Right_LedgeHop.is_colliding() and !$Right_LedgeHop2.is_colliding() and velocity.x > 0:
 			velocity.y += jump_height / 3.25
 	
-
 func handle_landing_effects(was_grounded: bool, pre_land_vy: float, x_input: float) -> void:
 	if is_on_floor() and not was_grounded:
 		var impact: float = clamp((pre_land_vy - 450.0) / 1800.0, 0.0, 1.0)
@@ -274,7 +276,6 @@ func handle_landing_effects(was_grounded: bool, pre_land_vy: float, x_input: flo
 		if Input.is_action_pressed("move_down") and pre_land_vy > PLUNGE_MIN_IMPACT_VY:
 			var glide_dir: float = sign(x_input) if x_input != 0.0 else look_dir_x
 			velocity.x = glide_dir * PLUNGE_LAND_GLIDE_SPEED
-
 	
 func apply_squash_stretch(new_scale: Vector2) -> void:
 	visual.scale = new_scale
@@ -283,12 +284,21 @@ func update_squash_and_stretch(delta) -> void:
 	# Elastic recovery back to Vector2(1, 1)
 	visual.scale = visual.scale.lerp(Vector2.ONE, 6.0 * delta)
 	
+	#Flashes white and cools off to show dash cooldown
+	if not $DashCoolDownTimer.is_stopped():
+		var progress: float = $DashCoolDownTimer.time_left / $DashCoolDownTimer.wait_time
+		var flash_color = base_color.lerp(Color.WHITE, 0.5)
+		visual.color = base_color.lerp(flash_color, progress)
+	else:
+		visual.color = base_color
+	
 	# TEMPORARY: Ghost trail for high-speed prototype readability
 	if velocity.length() > 380.0:
 		trail_timer -= delta
 		if trail_timer <= 0.0:
 			spawn_trail_ghost()
 			trail_timer = 0.03
+
 
 func spawn_trail_ghost() -> void: #TEMPORARY: Ghost trail for high-speed prototype readability
 	var ghost := ColorRect.new()

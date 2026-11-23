@@ -74,11 +74,11 @@ wait_time = 0.2
 one_shot = true
 
 [node name="DashCoolDownTimer" type="Timer" parent="." unique_id=956995753]
-wait_time = 0.4
+wait_time = 0.6
 one_shot = true
 
 [node name="PlungeLockTimer" type="Timer" parent="." unique_id=136064730]
-wait_time = 0.15
+wait_time = 0.25
 one_shot = true
 
 [connection signal="timeout" from="DashTimer" to="." method="_on_dash_timer_timeout"]
