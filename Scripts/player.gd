@@ -80,9 +80,17 @@ var is_dashing: bool = false
 var can_dash: bool = true
 var has_air_dashed: bool = false
 
+var is_boomerang_out: bool = false
+var mass_scale: float = 1.0
+
 #endregion
 
 func _physics_process(delta: float) -> void:
+	
+	#boomerang test
+	if Input.is_action_just_pressed("throw_recall"): # Left Click
+		set_boomerang_out(not is_boomerang_out)
+	
 	var x_input: float = get_x_input()
 	
 	update_timers(delta)
@@ -164,14 +172,21 @@ func handle_horizontal_movement(delta: float, x_input: float) -> void:
 	if is_dashing:
 		velocity.x = look_dir_x * DASH_SPEED
 		return
-		
-	var is_running: bool = Input.is_action_pressed("run")
-	current_speed = RUN_SPEED if is_running else BASE_SPEED
-	jump_height = RUN_JUMP_HEIGHT if is_running else BASE_JUMP
+	
+	var speed_multiplier: float = 1.25 if is_boomerang_out else 1.0
+	var jump_multiplier: float = 1.15 if is_boomerang_out else 1.0
 
+	var is_running: bool = Input.is_action_pressed("run")
+	current_speed = (RUN_SPEED if is_running else BASE_SPEED) * speed_multiplier
+	jump_height = (RUN_JUMP_HEIGHT if is_running else BASE_JUMP) * jump_multiplier
+	
 	#Acceleration
 	var accel: float = acceleration if is_on_floor() else air_acceleration
 	var decel: float = deceleration if is_on_floor() else air_deceleration
+	
+	if is_boomerang_out:
+		accel *= 1.3
+		decel *= 1.6
 	
 	if is_running:
 			accel *= 1.75
@@ -282,7 +297,7 @@ func apply_squash_stretch(new_scale: Vector2) -> void:
 
 func update_squash_and_stretch(delta) -> void:
 	# Elastic recovery back to Vector2(1, 1)
-	visual.scale = visual.scale.lerp(Vector2.ONE, 6.0 * delta)
+	visual.scale = visual.scale.lerp(Vector2.ONE * mass_scale, 6.0 * delta)
 	
 	#Flashes white and cools off to show dash cooldown
 	if not $DashCoolDownTimer.is_stopped():
@@ -299,7 +314,6 @@ func update_squash_and_stretch(delta) -> void:
 			spawn_trail_ghost()
 			trail_timer = 0.03
 
-
 func spawn_trail_ghost() -> void: #TEMPORARY: Ghost trail for high-speed prototype readability
 	var ghost := ColorRect.new()
 	ghost.size = visual.size
@@ -315,3 +329,11 @@ func spawn_trail_ghost() -> void: #TEMPORARY: Ghost trail for high-speed prototy
 	var tween := create_tween()
 	tween.tween_property(ghost, "modulate:a", 0.0, 0.2)
 	tween.tween_callback(ghost.queue_free)
+
+#===============================================================================
+# BOOMERANG AND ATTACKS
+#===============================================================================
+func set_boomerang_out(out: bool) -> void:
+	is_boomerang_out = out
+	mass_scale = 0.6 if out else 1.0
+	$CollisionShape2D.scale = Vector2.ONE * mass_scale
