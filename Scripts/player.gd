@@ -7,8 +7,8 @@ extends CharacterBody2D
 @onready var JumpBufferTimer: Timer = $JumpBufferTimer
 @onready var visual: ColorRect = $ColorRect # Change to Sprite2D when assets come in!
 
-const BASE_SPEED: float = 400.0
-const RUN_SPEED: float = 800.0
+const BASE_SPEED: float = 600.0
+const RUN_SPEED: float = 900.0
 const BASE_JUMP: float = -650.0
 
 const BASE_GRAVITY_NORMAL: float = 1400.0
@@ -109,7 +109,7 @@ func _physics_process(delta: float) -> void:
 		#Running
 		var is_running: bool = Input.is_action_pressed("run")
 		current_speed = RUN_SPEED if is_running else BASE_SPEED
-		jump_height = -1000.0 if is_running else -850.0
+		jump_height = -950.0 if is_running else -850.0
 
 		if is_running:
 			accel *= 1.75
