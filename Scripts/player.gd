@@ -5,11 +5,16 @@ extends CharacterBody2D
 # ==============================================================================
 @onready var CoyoteTimer: Timer = $CoyoteTimer
 @onready var JumpBufferTimer: Timer = $JumpBufferTimer
+@onready var PlungeLockTimer: Timer = $PlungeLockTimer
+
 @onready var visual: ColorRect = $ColorRect # Change to Sprite2D when assets come in!
 
 const BASE_SPEED: float = 600.0
 const RUN_SPEED: float = 900.0
-const BASE_JUMP: float = -650.0
+
+const RUN_JUMP_HEIGHT: float = -950.0
+const BASE_JUMP: float = -850.0
+const JUMP_RELEASE_MULTIPLIER: float = 0.72
 
 const BASE_GRAVITY_NORMAL: float = 1400.0
 const BASE_GRAVITY_WALL: float = 250.0
@@ -25,6 +30,9 @@ const WALL_JUMP_HEIGHT: float = -1000.0
 const FAST_FALL_MULTIPLIER: float = 2.0
 const MAX_FAST_FALL_SPEED: float = 2400.0
 const PLUNGE_START_SPEED: float = 800.0
+
+const PLUNGE_MIN_IMPACT_VY: float = 900.0
+const PLUNGE_LAND_GLIDE_SPEED: float = 400.0
 
 const MAX_CHARGETIME: float = 0.5
 const CHARGE_JUMP_MULTIPLIER: float = 1.35
@@ -72,20 +80,53 @@ var can_dash: bool = true
 #endregion
 
 func _physics_process(delta: float) -> void:
-	visual.scale = visual.scale.lerp(Vector2.ONE, 6.0 * delta) #squash and stretch
+	var x_input: float = get_x_input()
 	
-	var x_input: float = Input.get_action_strength("move_right") - Input.get_action_strength("move_left")
+	update_timers(delta)
+	update_facing_direction(x_input)
 	
-	#Acceleration
-	var accel: float = acceleration if is_on_floor() else air_acceleration
-	var decel: float = deceleration if is_on_floor() else air_deceleration
+	handle_horizontal_movement(delta, x_input)
+	handle_dash()
+	handle_verticle_movement(delta, x_input)
+	handle_jumps()
+	handle_corner_correction()
+	
+	var pre_land_vy := velocity.y
+	was_on_floor = is_on_floor()
+	move_and_slide()
+	
+	handle_landing_effects(was_on_floor, pre_land_vy, x_input)
+	update_squash_and_stretch(delta)
+	
+	
+	pass
 
-	#Direction
+func get_x_input() -> float:
+	return Input.get_action_strength("move_right") - Input.get_action_strength("move_left")
+	
+func update_timers(delta) -> void:
+	if wall_jump_lock > 0.0:
+			wall_jump_lock -= delta
+	
+	#Floor vs. Air Coyote State
+	if is_on_floor():
+		coyote_time_activated = false
+		wall_contact_coyote = 0.0
+	else:
+		if CoyoteTimer.is_stopped() and !coyote_time_activated:
+			CoyoteTimer.start()
+			coyote_time_activated = true
+		if is_on_wall():
+			wall_normal_x = get_wall_normal().x
+			wall_contact_coyote = WALL_CONTACT_COYOTE_TIME
+		elif wall_contact_coyote > 0.0:
+			wall_contact_coyote -= delta
+		
+func update_facing_direction(x_input: float) -> void:
 	if x_input != 0.0 and wall_jump_lock <= 0.0 and not is_dashing:
 		look_dir_x = sign(x_input)
-	
-	#region DASHING
-	
+
+func handle_dash() -> void:
 	if Input.is_action_just_pressed("dash") and can_dash:
 		is_dashing = true
 		can_dash = false
@@ -102,97 +143,105 @@ func _physics_process(delta: float) -> void:
 		$DashTimer.start()
 		$DashCoolDownTimer.start()
 		apply_squash_stretch(Vector2(1.35, 0.70))
+
+func _on_dash_timer_timeout() -> void:
+	is_dashing = false
 	
+	var x_input: float = Input.get_action_strength("move_right") - Input.get_action_strength("move_left")
+	if x_input == 0.0:
+		velocity.x = look_dir_x * 600.0 # Slides to a stop over ~0.4s (480 / 1200 decel)
+	else:
+		velocity.x = clamp(velocity.x, -current_speed, current_speed)
+
+func _on_dash_cool_down_timer_timeout() -> void:
+	can_dash = true
+
+func handle_horizontal_movement(delta: float, x_input: float) -> void:
 	if is_dashing:
 		velocity.x = look_dir_x * DASH_SPEED
-	else:
-		#Running
-		var is_running: bool = Input.is_action_pressed("run")
-		current_speed = RUN_SPEED if is_running else BASE_SPEED
-		jump_height = -950.0 if is_running else -850.0
+		return
+		
+	var is_running: bool = Input.is_action_pressed("run")
+	current_speed = RUN_SPEED if is_running else BASE_SPEED
+	jump_height = RUN_JUMP_HEIGHT if is_running else BASE_JUMP
 
-		if is_running:
+	#Acceleration
+	var accel: float = acceleration if is_on_floor() else air_acceleration
+	var decel: float = deceleration if is_on_floor() else air_deceleration
+	
+	if is_running:
 			accel *= 1.75
 			if is_on_floor():
 				decel *= 0.80
 				
 		
-		#region Wall Jump Lock
-		if wall_jump_lock > 0.0:
-			wall_jump_lock -= delta
-			velocity.x = move_toward(velocity.x, x_input * current_speed, (accel * 0.25) * delta)
-		elif x_input != 0.0:
-			var turn_boost: float = 1.5 if sign(x_input) != sign(velocity.x) and velocity.x != 0.0 else 1.0
-			velocity.x = move_toward(velocity.x, x_input * current_speed, accel * turn_boost * delta)
-		else:
-			velocity.x = move_toward(velocity.x, 0.0, decel * delta)	
-			velocity.x = clamp(velocity.x, -max_speed, max_speed)
-		#endregion
+	if wall_jump_lock > 0.0:
+		velocity.x = move_toward(velocity.x, x_input * current_speed, (accel * 0.25) * delta)
+	elif x_input != 0.0:
+		var turn_boost: float = 1.5 if sign(x_input) != sign(velocity.x) and velocity.x != 0.0 else 1.0
+		velocity.x = move_toward(velocity.x, x_input * current_speed, accel * turn_boost * delta)
+	else:
+		velocity.x = move_toward(velocity.x, 0.0, decel * delta)	
+		velocity.x = clamp(velocity.x, -max_speed, max_speed)
 
 	
-#region COYOTE TIMER & GRAVITY
+func handle_verticle_movement(delta: float, x_input: float) -> void:
 	if is_on_floor():
-		coyote_time_activated = false
-		wall_contact_coyote = 0.0
+		return
+		
+	#Variable Jump and Ceiling Bonk
+	if Input.is_action_just_released("jump") and velocity.y < 0:
+		velocity.y *= JUMP_RELEASE_MULTIPLIER
+	if is_on_ceiling() and velocity.y < 0:
+		velocity.y = 0.0
+		
+	#Verticle air state: Wall slide/plunge/normal fall
+	if is_on_wall() and velocity.y > 0.0 and x_input != 0.0:
+		look_dir_x = -sign(wall_normal_x)
+		velocity.y = min(velocity.y + gravity_wall * delta, max_wall_slide_speed)
+	elif Input.is_action_pressed("move_down") and not is_on_wall() and PlungeLockTimer.is_stopped():
+		apply_plunge(delta)
 	else:
-		if CoyoteTimer.is_stopped() and !coyote_time_activated:
-			CoyoteTimer.start()
-			coyote_time_activated = true
-			
-		if Input.is_action_just_released("jump") and velocity.y < 0:
-			velocity.y *= 0.72
-		if is_on_ceiling() and velocity.y < 0:
-			velocity.y = 0.0
-			
-		if is_on_wall():
-			wall_normal_x = get_wall_normal().x
-			wall_contact_coyote = WALL_CONTACT_COYOTE_TIME
-		else:
-			wall_contact_coyote -= delta
-			
-		if is_on_wall() and velocity.y > 0 and x_input != 0:
-			look_dir_x = -sign(wall_normal_x)
-			velocity.y = min(velocity.y + gravity_wall * delta, max_wall_slide_speed)
-		else:
-			var is_fast_falling: bool = Input.is_action_pressed("move_down") and not is_on_wall()
-			var active_gravity: float = gravity_normal * (fall_multiplier if velocity.y > 0.0 else 1.0)
-			var current_max_fall: float = max_fall_speed
-			
-			if is_fast_falling:
-				is_dashing = false
-				active_gravity *= FAST_FALL_MULTIPLIER
-				current_max_fall = MAX_FAST_FALL_SPEED
-				if velocity.y < PLUNGE_START_SPEED:
-					velocity.y = PLUNGE_START_SPEED
-				visual.scale = visual.scale.lerp(Vector2(0.75, 1.30), 12.0 * delta)
-				
-			velocity.y = min(velocity.y + active_gravity * delta, current_max_fall)
-	#endregion
-
-	#region JUMP BUFFER (Floor Jump + Wall Jump)
-	if Input.is_action_just_pressed("jump"):
-		if JumpBufferTimer.is_stopped():
+		var active_gravity: float = gravity_normal * (fall_multiplier if velocity.y > 0.0 else 1.0)
+		velocity.y = min(velocity.y + active_gravity * delta, max_fall_speed)
+	
+func apply_plunge(delta) -> void:
+	is_dashing = false
+	if velocity.y < PLUNGE_START_SPEED:
+		velocity.y = PLUNGE_START_SPEED
+		
+	var plunge_gravity: float = gravity_normal * fall_multiplier * FAST_FALL_MULTIPLIER
+	velocity.y = min(velocity.y + plunge_gravity * delta, MAX_FAST_FALL_SPEED)
+	visual.scale = visual.scale.lerp(Vector2(0.75, 1.30), 12.0 * delta)
+	
+func handle_jumps() -> void:
+	if Input.is_action_just_pressed("jump") and JumpBufferTimer.is_stopped():
 			JumpBufferTimer.start()
 			
-	if !JumpBufferTimer.is_stopped():
-		if !CoyoteTimer.is_stopped() or is_on_floor():
-			# Normal Floor Jump
-			velocity.y = jump_height
-			apply_squash_stretch(Vector2(0.72, 1.32))
-			JumpBufferTimer.stop()
-			CoyoteTimer.stop()
-			coyote_time_activated = true
-		elif wall_contact_coyote > 0.0:
-			# Wall Jump
-			velocity.y = WALL_JUMP_HEIGHT
-			velocity.x = wall_normal_x * wall_jump_push_force
-			look_dir_x = sign(wall_normal_x)
-			apply_squash_stretch(Vector2(0.70, 1.35))
-			wall_jump_lock = WALL_JUMP_LOCK_TIME
-			wall_contact_coyote = 0.0
-			JumpBufferTimer.stop()
+	if JumpBufferTimer.is_stopped():
+		return
 	
-	# Corner Nudge
+	# Normal Floor Jump
+	if !CoyoteTimer.is_stopped() or is_on_floor():
+		velocity.y = jump_height
+		PlungeLockTimer.start()
+		apply_squash_stretch(Vector2(0.72, 1.32))
+		JumpBufferTimer.stop()
+		CoyoteTimer.stop()
+		coyote_time_activated = true
+	
+	#Wall Jump
+	elif wall_contact_coyote > 0.0:
+		velocity.y = WALL_JUMP_HEIGHT
+		velocity.x = wall_normal_x * wall_jump_push_force
+		look_dir_x = sign(wall_normal_x)
+		apply_squash_stretch(Vector2(0.70, 1.35))
+		wall_jump_lock = WALL_JUMP_LOCK_TIME
+		wall_contact_coyote = 0.0
+		JumpBufferTimer.stop()
+
+func handle_corner_correction() -> void:
+	#Head Nudge
 	if velocity.y < jump_height / 2.0:
 		var head_collision: Array = [
 			$Left_HeadNudge.is_colliding(),
@@ -212,64 +261,47 @@ func _physics_process(delta: float) -> void:
 			velocity.y += jump_height / 3.25
 		if $Right_LedgeHop.is_colliding() and !$Right_LedgeHop2.is_colliding() and velocity.x > 0:
 			velocity.y += jump_height / 3.25
-	#endregion
 	
-	var pre_land_vy: float = velocity.y 
-	was_on_floor = is_on_floor()
-	move_and_slide()
-	
-	#region FAST FALL
-	if is_on_floor() and not was_on_floor:
+
+func handle_landing_effects(was_grounded: bool, pre_land_vy: float, x_input: float) -> void:
+	if is_on_floor() and not was_grounded:
 		var impact: float = clamp((pre_land_vy - 450.0) / 1800.0, 0.0, 1.0)
 		var squash_x: float = lerp(1.08, 1.38, impact)
 		var squash_y: float = lerp(0.92, 0.65, impact)
 		apply_squash_stretch(Vector2(squash_x, squash_y))
 		
 		#Glides a little after landing
-		if Input.is_action_pressed("move_down") and pre_land_vy > 900.0:
+		if Input.is_action_pressed("move_down") and pre_land_vy > PLUNGE_MIN_IMPACT_VY:
 			var glide_dir: float = sign(x_input) if x_input != 0.0 else look_dir_x
-			velocity.x = glide_dir * 400.0
-	#endregion
+			velocity.x = glide_dir * PLUNGE_LAND_GLIDE_SPEED
 
-	#TEMPORARY - ONLY FOR REDUCING EYE STRAIN ON PROTOTYPE
+	
+func apply_squash_stretch(new_scale: Vector2) -> void:
+	visual.scale = new_scale
+
+func update_squash_and_stretch(delta) -> void:
+	# Elastic recovery back to Vector2(1, 1)
+	visual.scale = visual.scale.lerp(Vector2.ONE, 6.0 * delta)
+	
+	# TEMPORARY: Ghost trail for high-speed prototype readability
 	if velocity.length() > 380.0:
 		trail_timer -= delta
 		if trail_timer <= 0.0:
 			spawn_trail_ghost()
-			trail_timer = 0.03 # Spawns a fading copy every 0.03 seconds
+			trail_timer = 0.03
 
-func apply_squash_stretch(new_scale: Vector2) -> void:
-	visual.scale = new_scale
-
-#Remove when assets come
-
-	#region TRAIL
-func spawn_trail_ghost() -> void: #TEMPORARY - ONLY FOR REDUCING EYE STRAIN ON PROTOTYPE
+func spawn_trail_ghost() -> void: #TEMPORARY: Ghost trail for high-speed prototype readability
 	var ghost := ColorRect.new()
 	ghost.size = visual.size
-	ghost.scale = visual.scale 
+	ghost.scale = visual.scale
 	ghost.pivot_offset = visual.pivot_offset
 	ghost.color = visual.color
-	ghost.color.a = 0.35 
+	ghost.color.a = 0.35
 	ghost.global_position = visual.global_position
-	ghost.z_index = visual.z_index - 1 
+	ghost.z_index = visual.z_index - 1
 	
 	get_parent().add_child(ghost)
 	
 	var tween := create_tween()
 	tween.tween_property(ghost, "modulate:a", 0.0, 0.2)
 	tween.tween_callback(ghost.queue_free)
-	#endregion
-
-func _on_dash_timer_timeout() -> void:
-	is_dashing = false
-	
-	var x_input: float = Input.get_action_strength("move_right") - Input.get_action_strength("move_left")
-	if x_input == 0.0:
-		velocity.x = look_dir_x * 600.0 # Slides to a stop over ~0.4s (480 / 1200 decel)
-	else:
-		velocity.x = clamp(velocity.x, -current_speed, current_speed)
-
-func _on_dash_cool_down_timer_timeout() -> void:
-	
-	can_dash = true

@@ -77,5 +77,9 @@ one_shot = true
 wait_time = 0.4
 one_shot = true
 
+[node name="PlungeLockTimer" type="Timer" parent="." unique_id=136064730]
+wait_time = 0.15
+one_shot = true
+
 [connection signal="timeout" from="DashTimer" to="." method="_on_dash_timer_timeout"]
 [connection signal="timeout" from="DashCoolDownTimer" to="." method="_on_dash_cool_down_timer_timeout"]
