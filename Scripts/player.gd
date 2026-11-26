@@ -16,7 +16,7 @@ const RUN_SPEED: float = 800.0
 
 const RUN_JUMP_HEIGHT: float = -950.0
 const BASE_JUMP: float = -850.0
-const JUMP_RELEASE_MULTIPLIER: float = 0.72
+const JUMP_RELEASE_MULTIPLIER: float = 0.9
 
 const BASE_GRAVITY_NORMAL: float = 1400.0
 const BASE_GRAVITY_WALL: float = 250.0
@@ -29,18 +29,18 @@ const WALL_CONTACT_COYOTE_TIME: float = 0.2
 const WALL_JUMP_LOCK_TIME: float = 0.05
 const WALL_JUMP_HEIGHT: float = -1000.0
 
-const FAST_FALL_MULTIPLIER: float = 2.0
+const FAST_FALL_MULTIPLIER: float = 2.5
 const MAX_FAST_FALL_SPEED: float = 2400.0
 const PLUNGE_START_SPEED: float = 800.0
 
-const PLUNGE_MIN_IMPACT_VY: float = 900.0
+const PLUNGE_MIN_IMPACT_VY: float = 1800.0
 const PLUNGE_LAND_GLIDE_SPEED: float = 400.0
 
 const MAX_CHARGETIME: float = 0.5
 const CHARGE_JUMP_MULTIPLIER: float = 1.35
 
 const DASH_SPEED = 1000.0
-const DASH_ARC_VELOCITY = -500.0
+const DASH_ARC_VELOCITY = -300.0
 
 # ==============================================================================
 # EXPORTED TUNING VARIABLES
@@ -72,9 +72,16 @@ var wall_jump_lock: float = 0.0
 var wall_normal_x: float = 0.0
 var look_dir_x: int = 1
 
+var is_tweening_scale: bool = false
+var is_plunging: bool = false
+var is_running: bool = false
+var is_jumping_windup: bool = false
+
+var has_jumped: bool = false
 
 var is_charging: bool = false
 var charge_amount: float = 0.0
+
 
 var is_dashing: bool = false
 var can_dash: bool = true
@@ -117,16 +124,18 @@ func update_timers(delta) -> void:
 			wall_jump_lock -= delta
 	
 	#Floor vs. Air Coyote State
-	if is_on_floor():
+	if is_on_floor() and velocity.y >= 0.0:
 		has_air_dashed = false
+		has_jumped = false
 		coyote_time_activated = false
 		wall_contact_coyote = 0.0
 	else:
-		if CoyoteTimer.is_stopped() and !coyote_time_activated:
+		if CoyoteTimer.is_stopped() and !coyote_time_activated and not has_jumped:
 			CoyoteTimer.start()
 			coyote_time_activated = true
 		if is_on_wall():
 			has_air_dashed = false
+			has_jumped = false
 			wall_normal_x = get_wall_normal().x
 			wall_contact_coyote = WALL_CONTACT_COYOTE_TIME
 		elif wall_contact_coyote > 0.0:
@@ -137,12 +146,20 @@ func update_facing_direction(x_input: float) -> void:
 		look_dir_x = sign(x_input)
 
 func handle_dash() -> void:
+	
+	is_jumping_windup = false
+	
 	if Input.is_action_just_pressed("dash") and can_dash and (is_on_floor() or not has_air_dashed):
-		if not is_on_floor():
+		var was_grounded: bool = is_on_floor()
+		if not was_grounded:
 			has_air_dashed = true
+		
 		is_dashing = true
 		can_dash = false
-		velocity.y = DASH_ARC_VELOCITY
+		velocity.y = 0.0
+		
+		if was_grounded and is_running:
+			velocity.y = DASH_ARC_VELOCITY
 		
 		if is_on_wall():
 			wall_normal_x = get_wall_normal().x
@@ -152,6 +169,7 @@ func handle_dash() -> void:
 			look_dir_x = sign(wall_normal_x)
 			wall_contact_coyote = 0.0
 		
+		velocity.x = look_dir_x * (current_speed + 250.0)
 		$DashTimer.start()
 		$DashCoolDownTimer.start()
 		apply_squash_stretch(Vector2(1.35, 0.70))
@@ -169,16 +187,17 @@ func _on_dash_cool_down_timer_timeout() -> void:
 	can_dash = true
 
 func handle_horizontal_movement(delta: float, x_input: float) -> void:
-	if is_dashing:
-		velocity.x = look_dir_x * DASH_SPEED
-		return
 	
 	var speed_multiplier: float = 1.25 if is_boomerang_out else 1.0
 	var jump_multiplier: float = 1.15 if is_boomerang_out else 1.0
 
-	var is_running: bool = Input.is_action_pressed("run")
+	is_running = Input.is_action_pressed("run")
 	current_speed = (RUN_SPEED if is_running else BASE_SPEED) * speed_multiplier
 	jump_height = (RUN_JUMP_HEIGHT if is_running else BASE_JUMP) * jump_multiplier
+	
+	if is_dashing:
+		velocity.x = look_dir_x * (current_speed + 250.0)
+		return
 	
 	#Acceleration
 	var accel: float = acceleration if is_on_floor() else air_acceleration
@@ -207,6 +226,13 @@ func handle_verticle_movement(delta: float, x_input: float) -> void:
 	if is_on_floor():
 		return
 		
+	if is_dashing:
+		if (Input.is_action_pressed("move_down") or is_plunging) and PlungeLockTimer.is_stopped():
+			apply_plunge(delta)
+			return
+		if velocity.y == 0.0:
+			return
+	
 	#Variable Jump and Ceiling Bonk
 	if Input.is_action_just_released("jump") and velocity.y < 0:
 		velocity.y *= JUMP_RELEASE_MULTIPLIER
@@ -215,48 +241,15 @@ func handle_verticle_movement(delta: float, x_input: float) -> void:
 		
 	#Verticle air state: Wall slide/plunge/normal fall
 	if is_on_wall() and velocity.y > 0.0 and x_input != 0.0:
+		is_plunging = false
 		look_dir_x = -sign(wall_normal_x)
 		velocity.y = min(velocity.y + gravity_wall * delta, max_wall_slide_speed)
 	elif Input.is_action_pressed("move_down") and not is_on_wall() and PlungeLockTimer.is_stopped():
 		apply_plunge(delta)
 	else:
-		var active_gravity: float = gravity_normal * (fall_multiplier if velocity.y > 0.0 else 1.0)
+		var boomerang_grav_mult: float = 1.25 if is_boomerang_out else 1.0
+		var active_gravity: float = gravity_normal * boomerang_grav_mult * (fall_multiplier if velocity.y > 0.0 else 1.0)
 		velocity.y = min(velocity.y + active_gravity * delta, max_fall_speed)
-	
-func apply_plunge(delta) -> void:
-	is_dashing = false
-	if velocity.y < PLUNGE_START_SPEED:
-		velocity.y = PLUNGE_START_SPEED
-		
-	var plunge_gravity: float = gravity_normal * fall_multiplier * FAST_FALL_MULTIPLIER
-	velocity.y = min(velocity.y + plunge_gravity * delta, MAX_FAST_FALL_SPEED)
-	visual.scale = visual.scale.lerp(Vector2(0.75, 1.30), 12.0 * delta)
-	
-func handle_jumps() -> void:
-	if Input.is_action_just_pressed("jump") and JumpBufferTimer.is_stopped():
-			JumpBufferTimer.start()
-			
-	if JumpBufferTimer.is_stopped():
-		return
-	
-	# Normal Floor Jump
-	if !CoyoteTimer.is_stopped() or is_on_floor():
-		velocity.y = jump_height
-		PlungeLockTimer.start()
-		apply_squash_stretch(Vector2(0.72, 1.32))
-		JumpBufferTimer.stop()
-		CoyoteTimer.stop()
-		coyote_time_activated = true
-	
-	#Wall Jump
-	elif wall_contact_coyote > 0.0:
-		velocity.y = WALL_JUMP_HEIGHT
-		velocity.x = wall_normal_x * wall_jump_push_force
-		look_dir_x = sign(wall_normal_x)
-		apply_squash_stretch(Vector2(0.70, 1.35))
-		wall_jump_lock = WALL_JUMP_LOCK_TIME
-		wall_contact_coyote = 0.0
-		JumpBufferTimer.stop()
 
 func handle_corner_correction() -> void:
 	#Head Nudge
@@ -274,30 +267,93 @@ func handle_corner_correction() -> void:
 				global_position.x -= 6.0
 				
 	# Ledge Hop
-	if velocity.y > -120.0 and velocity.y < -20.0 and abs(velocity.x) > 15.0:
+	if is_on_wall() and velocity.y > -120.0 and velocity.y < -20.0 and abs(velocity.x) > 15.0:
 		if $Left_LedgeHop.is_colliding() and !$Left_LedgeHop2.is_colliding() and velocity.x < 0:
 			velocity.y += jump_height / 3.25
 		if $Right_LedgeHop.is_colliding() and !$Right_LedgeHop2.is_colliding() and velocity.x > 0:
 			velocity.y += jump_height / 3.25
+
+func handle_jumps() -> void:
+	
+	if Input.is_action_just_pressed("jump") and JumpBufferTimer.is_stopped():
+			JumpBufferTimer.start()
+			
+	if JumpBufferTimer.is_stopped() or is_jumping_windup:
+		return
+	
+	# Normal Floor Jump
+	if (!CoyoteTimer.is_stopped() or is_on_floor()) and not has_jumped:
+		has_jumped = true
+		#Squash if running, else normal squash
+		if is_running:
+			start_charged_jump()
+		else:
+			apply_squash_stretch(Vector2(0.72, 1.32))
+			velocity.y = jump_height
+			PlungeLockTimer.start()
+		
+		JumpBufferTimer.stop()
+		CoyoteTimer.stop()
+		coyote_time_activated = true
+	
+	#Wall Jump
+	elif wall_contact_coyote > 0.0:
+		velocity.y = WALL_JUMP_HEIGHT
+		velocity.x = wall_normal_x * wall_jump_push_force
+		look_dir_x = sign(wall_normal_x)
+		apply_squash_stretch(Vector2(0.70, 1.35))
+		wall_jump_lock = WALL_JUMP_LOCK_TIME
+		wall_contact_coyote = 0.0
+		JumpBufferTimer.stop()
+
+func start_charged_jump() -> void:
+	is_jumping_windup = true
+	var tween := create_tween()
+	# Compress down on the ground
+	tween.tween_property(visual, "scale", Vector2(1.2, 0.68) * mass_scale, 0.07).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	# Launch upward and smoothly stretch tall
+	tween.tween_callback(func():
+		is_jumping_windup = false
+		has_jumped = true
+		velocity.y = jump_height
+		PlungeLockTimer.start()
+	)
+	tween.tween_property(visual, "scale", Vector2(0.76, 1.28) * mass_scale, 0.14).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+
+func apply_plunge(delta) -> void:
+	is_plunging = true
+	is_jumping_windup = false
+	is_dashing = false
+	if velocity.y < PLUNGE_START_SPEED:
+		velocity.y = PLUNGE_START_SPEED
+		
+	var plunge_gravity: float = gravity_normal * fall_multiplier * FAST_FALL_MULTIPLIER
+	velocity.y = min(velocity.y + plunge_gravity * delta, MAX_FAST_FALL_SPEED)
+	visual.scale = visual.scale.lerp(Vector2(0.75, 1.30), 12.0 * delta)
 	
 func handle_landing_effects(was_grounded: bool, pre_land_vy: float, x_input: float) -> void:
 	if is_on_floor() and not was_grounded:
 		var impact: float = clamp((pre_land_vy - 450.0) / 1800.0, 0.0, 1.0)
-		var squash_x: float = lerp(1.08, 1.38, impact)
-		var squash_y: float = lerp(0.92, 0.65, impact)
+		var squash_x: float = lerp(1.12, 1.75, impact)
+		var squash_y: float = lerp(0.88, 0.45, impact)
 		apply_squash_stretch(Vector2(squash_x, squash_y))
 		
-		#Glides a little after landing
-		if Input.is_action_pressed("move_down") and pre_land_vy > PLUNGE_MIN_IMPACT_VY:
-			var glide_dir: float = sign(x_input) if x_input != 0.0 else look_dir_x
-			velocity.x = glide_dir * PLUNGE_LAND_GLIDE_SPEED
+		if is_plunging:
+			is_plunging = false
+			if pre_land_vy > PLUNGE_MIN_IMPACT_VY:
+				var glide_dir: float = sign(x_input) if x_input != 0.0 else look_dir_x
+				velocity.x = glide_dir * PLUNGE_LAND_GLIDE_SPEED
+				get_tree().call_group("camera", "apply_shake", 10.0)
+			else:
+				get_tree().call_group("camera", "apply_shake", 1.5)
 	
 func apply_squash_stretch(new_scale: Vector2) -> void:
 	visual.scale = new_scale
 
 func update_squash_and_stretch(delta) -> void:
-	# Elastic recovery back to Vector2(1, 1)
-	visual.scale = visual.scale.lerp(Vector2.ONE * mass_scale, 6.0 * delta)
+	
+	if not is_tweening_scale:
+		visual.scale = visual.scale.lerp(Vector2.ONE * mass_scale, 8.0 * delta)
 	
 	#Flashes white and cools off to show dash cooldown
 	if not $DashCoolDownTimer.is_stopped():
@@ -335,5 +391,5 @@ func spawn_trail_ghost() -> void: #TEMPORARY: Ghost trail for high-speed prototy
 #===============================================================================
 func set_boomerang_out(out: bool) -> void:
 	is_boomerang_out = out
-	mass_scale = 0.6 if out else 1.0
+	mass_scale = 0.65 if out else 1.0
 	$CollisionShape2D.scale = Vector2.ONE * mass_scale
