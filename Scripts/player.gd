@@ -47,6 +47,7 @@ const AIR_DASH_ARC_VELOCITY = -140.0
 # ==============================================================================
 # EXPORTED TUNING VARIABLES
 # ==============================================================================
+
 @export var jump_height: float = -950.0
 @export var current_speed: float = 350.0
 @export var max_speed: float = 1150.0
