@@ -7,8 +7,6 @@ size = Vector2(58.5, 58)
 
 [node name="player" type="CharacterBody2D" unique_id=1327922490]
 script = ExtResource("1_v0iea")
-max_speed = 1100.0
-gravity_normal = 2400.0
 
 [node name="ColorRect" type="ColorRect" parent="." unique_id=1744510965]
 offset_left = -32.0
@@ -74,11 +72,11 @@ wait_time = 0.2
 one_shot = true
 
 [node name="DashCoolDownTimer" type="Timer" parent="." unique_id=956995753]
-wait_time = 0.6
+wait_time = 0.25
 one_shot = true
 
 [node name="PlungeLockTimer" type="Timer" parent="." unique_id=136064730]
-wait_time = 0.25
+wait_time = 0.06
 one_shot = true
 
 [connection signal="timeout" from="DashTimer" to="." method="_on_dash_timer_timeout"]
