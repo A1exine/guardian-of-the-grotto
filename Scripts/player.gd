@@ -8,6 +8,9 @@ extends CharacterBody2D
 @onready var PlungeLockTimer: Timer = $PlungeLockTimer
 @onready var DashCoolDownTimer: Timer = $DashCoolDownTimer
 
+@onready var SlamHitBox: HitBox = $SlamHitBox
+@onready var SlamShape: CollisionShape2D = $SlamHitBox/CollisionShape2D
+
 @onready var visual: ColorRect = $ColorRect # Change to Sprite2D when assets come in!
 @onready var base_color: Color = visual.color
 
@@ -63,6 +66,14 @@ const AIR_DASH_ARC_VELOCITY = -140.0
 @export var air_acceleration: float = 1500.0
 @export var air_deceleration: float = 850.0
 
+@export_group("Combat & Blessing Stats")
+@export var max_hp: float = 100.0
+@export var current_hp: float = 100.0
+@export var slam_damage: float = 40.0
+@export var slam_radius_mult: float = 1.0
+@export var has_kinetic_rebound: bool = false
+@export var has_viscous_trail: bool = false
+@export var has_heavy_splash: bool = false
 
 # ==============================================================================
 # STATE VARIABLES
@@ -173,6 +184,7 @@ func handle_dash() -> void:
 		is_dashing = true
 		is_plunging = false
 		can_dash = false
+		SlamShape.disabled = true
 		
 		if was_grounded and is_running:
 			velocity.y = DASH_ARC_VELOCITY
@@ -271,7 +283,7 @@ func handle_horizontal_movement(delta: float, x_input: float) -> void:
 	if wall_jump_lock > 0.0:
 		velocity.x = move_toward(velocity.x, x_input * current_speed, (accel * 0.25) * delta)
 	elif x_input != 0.0:
-		var turn_boost: float = 2.2 if sign(x_input) != sign(velocity.x) and velocity.x != 0.0 else 1.0
+		var turn_boost: float = 2.0 if sign(x_input) != sign(velocity.x) and velocity.x != 0.0 else 1.0
 		velocity.x = move_toward(velocity.x, x_input * current_speed, accel * turn_boost * delta)
 	else:
 		velocity.x = move_toward(velocity.x, 0.0, decel * delta)
@@ -304,6 +316,7 @@ func handle_verticle_movement(delta: float, x_input: float) -> void:
 	# Vertical air state: Wall slide / Plunge / Normal fall
 	if is_on_wall() and velocity.y > 0.0 and x_input != 0.0:
 		is_plunging = false
+		SlamShape.disabled = true
 		look_dir_x = -sign(wall_normal_x)
 		velocity.y = min(velocity.y + gravity_wall * delta, max_wall_slide_speed)
 	elif (can_start_plunge or is_plunging) and not is_on_wall():
@@ -344,6 +357,7 @@ func start_charged_jump() -> void:
 	apply_squash_stretch(Vector2(0.70, 1.35) * mass_scale)
 
 func apply_plunge(delta) -> void:
+	SlamShape.disabled = false
 	is_plunging = true
 	has_plunged = true
 	is_jumping_windup = false
@@ -369,9 +383,11 @@ func handle_landing_effects(was_grounded: bool, pre_land_vy: float, x_input: flo
 		coyote_time_activated = false
 		PlungeLockTimer.stop()
 		
+		
 		if is_plunging:
 			is_plunging = false
 			has_plunged = true # Blocks S-spam during the tiny hop
+			SlamShape.disabled = true
 			
 			if pre_land_vy > PLUNGE_MIN_IMPACT_VY:
 				var glide_dir: float = sign(x_input) if x_input != 0.0 else look_dir_x

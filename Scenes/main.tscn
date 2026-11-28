@@ -1,8 +1,10 @@
 [gd_scene format=3 uid="uid://brt2qqy8kc2pa"]
 
 [ext_resource type="PackedScene" uid="uid://dcwsuael6p5c1" path="res://Scenes/player.tscn" id="1_jjgbg"]
-[ext_resource type="Script" uid="uid://74uombinuvf0" path="res://Scenes/camera_2d.gd" id="2_8gbba"]
+[ext_resource type="Script" uid="uid://74uombinuvf0" path="res://Scripts/camera_2d.gd" id="2_8gbba"]
 [ext_resource type="PackedScene" uid="uid://ch3s100mqvek2" path="res://Scenes/testplatform.tscn" id="2_bo1nx"]
+[ext_resource type="PackedScene" uid="uid://cmu1yo67fxsfd" path="res://Scenes/enemy.tscn" id="4_jjvhh"]
+[ext_resource type="PackedScene" uid="uid://55k24d1pdrep" path="res://Scenes/holywater.tscn" id="5_kry3j"]
 
 [node name="Main" type="Node2D" unique_id=182666557]
 
@@ -13,6 +15,7 @@ jump_height = -1000.0
 [node name="Camera2D" type="Camera2D" parent="." unique_id=439383242 node_paths=PackedStringArray("player")]
 position = Vector2(726, 218)
 zoom = Vector2(0.75, 0.75)
+process_callback = 0
 position_smoothing_enabled = true
 script = ExtResource("2_8gbba")
 player = NodePath("../player")
@@ -41,3 +44,9 @@ rotation = 1.5707964
 [node name="StaticBody2D4" parent="." unique_id=1083763558 instance=ExtResource("2_bo1nx")]
 position = Vector2(-10, 143)
 rotation = 1.5707964
+
+[node name="Enemy" parent="." unique_id=354858980 instance=ExtResource("4_jjvhh")]
+position = Vector2(708, 621)
+
+[node name="Node2D" parent="." unique_id=1090232340 instance=ExtResource("5_kry3j")]
+position = Vector2(397, 604)

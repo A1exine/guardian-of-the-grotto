@@ -1,0 +1,38 @@
+[gd_scene format=3 uid="uid://cmu1yo67fxsfd"]
+
+[ext_resource type="Script" uid="uid://dukrtybqnv0q" path="res://Scripts/hurtbox.gd" id="1_7k104"]
+[ext_resource type="Script" uid="uid://d022qb7etpdfu" path="res://Scripts/Enemy FSM/enemy.gd" id="1_afpow"]
+[ext_resource type="Script" uid="uid://dm0lns04hpj6s" path="res://Scripts/Enemy FSM/state_machine.gd" id="3_afpow"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_s3x7s"]
+size = Vector2(49, 85)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_3q5lw"]
+size = Vector2(87, 41.5625)
+
+[node name="Enemy" type="CharacterBody2D" unique_id=500817594]
+collision_layer = 4
+script = ExtResource("1_afpow")
+
+[node name="ColorRect" type="ColorRect" parent="." unique_id=1797003883]
+offset_left = -32.0
+offset_top = -100.0
+offset_right = 32.0
+color = Color(0.70980394, 0, 0.105882354, 1)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=518640084]
+position = Vector2(-0.5, -41.5)
+shape = SubResource("RectangleShape2D_s3x7s")
+
+[node name="HurtBox" type="Area2D" parent="." unique_id=66381421]
+collision_layer = 64
+collision_mask = 8
+script = ExtResource("1_7k104")
+metadata/_custom_type_script = "uid://dukrtybqnv0q"
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="HurtBox" unique_id=1716765192]
+position = Vector2(-1.5, -88.21875)
+shape = SubResource("RectangleShape2D_3q5lw")
+
+[node name="StateMachine" type="Node" parent="." unique_id=1846037688]
+script = ExtResource("3_afpow")
