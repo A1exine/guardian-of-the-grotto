@@ -1,0 +1,18 @@
+[gd_scene format=3 uid="uid://55k24d1pdrep"]
+
+[sub_resource type="CapsuleShape2D" id="CapsuleShape2D_3q5lw"]
+radius = 17.001106
+height = 267.78375
+
+[node name="Node2D" type="Area2D" unique_id=1090232340]
+
+[node name="ColorRect" type="ColorRect" parent="." unique_id=1550563471]
+offset_left = -128.0
+offset_top = -16.0
+offset_right = 128.0
+offset_bottom = 16.0
+color = Color(0.13725491, 0.7647059, 1, 1)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=611774861]
+rotation = 1.5719124
+shape = SubResource("CapsuleShape2D_3q5lw")

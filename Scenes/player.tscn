@@ -1,11 +1,24 @@
 [gd_scene format=3 uid="uid://dcwsuael6p5c1"]
 
 [ext_resource type="Script" uid="uid://cct14vp3xflha" path="res://Scripts/player.gd" id="1_v0iea"]
+[ext_resource type="Script" uid="uid://cbngknfswjmwb" path="res://Scripts/hitbox.gd" id="2_cvnsp"]
+[ext_resource type="Script" uid="uid://dukrtybqnv0q" path="res://Scripts/hurtbox.gd" id="3_6t5aa"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_s3x7s"]
 size = Vector2(58.5, 58)
 
+[sub_resource type="CapsuleShape2D" id="CapsuleShape2D_s3x7s"]
+radius = 23.992517
+height = 83.99395
+
+[sub_resource type="CapsuleShape2D" id="CapsuleShape2D_3q5lw"]
+radius = 27.009325
+height = 63.974274
+
 [node name="player" type="CharacterBody2D" unique_id=1327922490]
+z_index = 1
+collision_layer = 2
+collision_mask = 5
 script = ExtResource("1_v0iea")
 
 [node name="ColorRect" type="ColorRect" parent="." unique_id=1744510965]
@@ -78,6 +91,29 @@ one_shot = true
 [node name="PlungeLockTimer" type="Timer" parent="." unique_id=136064730]
 wait_time = 0.06
 one_shot = true
+
+[node name="SlamHitBox" type="Area2D" parent="." unique_id=1062796385]
+collision_layer = 8
+collision_mask = 64
+script = ExtResource("2_cvnsp")
+metadata/_custom_type_script = "uid://cbngknfswjmwb"
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="SlamHitBox" unique_id=1410678000]
+position = Vector2(-2.842173e-14, -15)
+rotation = 1.5722879
+shape = SubResource("CapsuleShape2D_s3x7s")
+disabled = true
+
+[node name="HurtBox" type="Area2D" parent="." unique_id=1376895074]
+collision_layer = 16
+collision_mask = 32
+script = ExtResource("3_6t5aa")
+metadata/_custom_type_script = "uid://dukrtybqnv0q"
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="HurtBox" unique_id=483779328]
+position = Vector2(0, -30.999998)
+rotation = 1.581742
+shape = SubResource("CapsuleShape2D_3q5lw")
 
 [connection signal="timeout" from="DashTimer" to="." method="_on_dash_timer_timeout"]
 [connection signal="timeout" from="DashCoolDownTimer" to="." method="_on_dash_cool_down_timer_timeout"]
